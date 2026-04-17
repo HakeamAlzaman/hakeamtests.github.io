@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <title>نظام التتبع المتقدم - GPS Tracking System</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+
+        /* Main Control Panel */
+        #overlay {
+            position: absolute; top: 15px; left: 15px; z-index: 1000;
+            background: rgba(0, 0, 0, 0.9); 
+            padding: 20px;
+            border-radius: 16px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            width: 280px;
+            color: white;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        #overlay h3 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            color: #00b894;
+            border-bottom: 2px solid rgba(0,184,148,0.3);
+            padding-bottom: 10px;
+        }
+
+        #btn-start {
+            background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+            color: white; border: none; padding: 14px;
+            width: 100%; border-radius: 25px; font-weight: bold; cursor: pointer;
+            font-size: 14px; transition: all 0.3s; margin-top: 10px;
+        }
+        #btn-start:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 25px rgba(0,184,148,0.5); 
+        }
+        #btn-start:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-line { 
+            margin: 12px 0; 
+            font-size: 13px; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        .inside { color: #00ff88; font-weight: bold; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
+        .outside { color: #ff4757; font-weight: bold; text-shadow: 0 0 10px rgba(255,71,87,0.5); }
+        .pending { color: #ffa502; font-weight: bold; }
+
+        /* GPS Info Panel */
+        #gps-info {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(0,184,148,0.1);
+            border-radius: 10px;
+            font-size: 11px;
+            border: 1px solid rgba(0,184,148,0.2);
+        }
+        #gps-info div { margin: 4px 0; }
+        .gps-label { color: #888; }
+        .gps-value { color: #00b894; font-family: monospace; }
+
+        /* Error Log Panel */
+        #error-log {
+            position: absolute; 
+            bottom: 15px; 
+            right: 15px; 
+            z-index: 1000;
+            background: rgba(20, 20, 20, 0.95); 
+            padding: 15px;
+            border-radius: 12px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            width: 350px;
+            max-height: 250px;
+            color: white;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,71,87,0.3);
+            display: none;
+            overflow: hidden;
+        }
+        #error-log.visible { display: block; }
+        #error-log h4 {
+            margin: 0 0 10px 0;
+            color: #ff4757;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #error-log-content {
+            max-height: 180px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        .log-entry {
+            padding: 6px 8px;
+            margin: 4px 0;
+            border-radius: 6px;
+            border-right: 3px solid;
+        }
+        .log-error { background: rgba(255,71,87,0.15); border-color: #ff4757; color: #ff6b7a; }
+        .log-warn { background: rgba(255,165,2,0.15); border-color: #ffa502; color: #ffc107; }
+        .log-info { background: rgba(0,184,148,0.15); border-color: #00b894; color: #00d9a3; }
+        .log-time { color: #666; font-size: 10px; margin-left: 5px; }
+
+        /* Toggle Error Log Button */
+        #btn-toggle-log {
+            position: absolute;
+            bottom: 15px;
+            right: 370px;
+            z-index: 1000;
+            background: rgba(255,71,87,0.8);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 12px;
+            display: none;
+        }
+        #btn-toggle-log.visible { display: block; }
+
+        /* Alert Modal Styles */
+        #backdrop {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 1999;
+            backdrop-filter: blur(8px);
+        }
+
+        .region-alert {
+            display: none;
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 40px 50px;
+            border-radius: 24px; 
+            box-shadow: 0 30px 100px rgba(0,0,0,0.7);
+            z-index: 2000;
+            text-align: center;
+            min-width: 340px;
+            max-width: 90%;
+            animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            color: white;
+        }
+
+        .region-alert.region1 { background: linear-gradient(135deg, #ff5252 0%, #ff3838 100%); }
+        .region-alert.region2 { background: linear-gradient(135deg, #0f9D58 0%, #0a8f4c 100%); }
+
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            70% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        .region-alert h2 { margin: 0 0 15px 0; font-size: 28px; }
+        .region-alert p { margin: 0; font-size: 18px; opacity: 0.95; line-height: 1.6; }
+        .region-alert .region-name { font-size: 36px; font-weight: bold; margin: 15px 0; display: block; }
+        .region-alert .region-icon { font-size: 70px; margin-bottom: 25px; animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        .close-btn {
+            margin-top: 30px; 
+            background: rgba(255,255,255,0.2); 
+            border: 2px solid rgba(255,255,255,0.6); 
+            color: white; padding: 14px 40px; 
+            border-radius: 30px; 
+            cursor: pointer; 
+            font-size: 15px; 
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .close-btn:hover { 
+            background: white; 
+            color: #333; 
+            transform: scale(1.05);
+        }
+
+        /* Accuracy Indicator */
+        .accuracy-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .accuracy-high { background: #00ff88; color: #000; }
+        .accuracy-medium { background: #ffa502; color: #000; }
+        .accuracy-low { background: #ff4757; color: #fff; }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #00b894;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="overlay">
+    <h3>📍 نظام التتبع المتقدم</h3>
+    <div class="status-line">
+        <span>📡 GPS:</span> 
+        <span id="status"><span class="pending">⭕ OFFLINE</span></span>
+    </div>
+    <div class="status-line">
+        <span>🎯 Zone:</span> 
+        <span id="zone-check" class="pending">---</span>
+    </div>
+    <div class="status-line">
+        <span>📊 Accuracy:</span> 
+        <span id="accuracy">---</span>
+    </div>
+    <button id="btn-start">📡 تفعيل تتبع الموقع</button>
+
+    <div id="gps-info" style="display: none;">
+        <div><span class="gps-label">Latitude:</span> <span class="gps-value" id="lat">---</span></div>
+        <div><span class="gps-label">Longitude:</span> <span class="gps-value" id="lng">---</span></div>
+        <div><span class="gps-label">Altitude:</span> <span class="gps-value" id="alt">---</span></div>
+        <div><span class="gps-label">Speed:</span> <span class="gps-value" id="speed">---</span></div>
+        <div><span class="gps-label">Heading:</span> <span class="gps-value" id="heading">---</span></div>
+        <div><span class="gps-label">Timestamp:</span> <span class="gps-value" id="timestamp">---</span></div>
+    </div>
+</div>
+
+<button id="btn-toggle-log" onclick="toggleErrorLog()">📋 سجل الأخطاء</button>
+
+<div id="error-log">
+    <h4>
+        <span>🚨 سجل الأخطاء والأحداث</span>
+        <span style="cursor: pointer; font-size: 16px;" onclick="clearLog()">🗑️</span>
+    </h4>
+    <div id="error-log-content"></div>
+</div>
+
+<div id="backdrop"></div>
+
+<!-- Region 1 Alert -->
+<div id="alert-region1" class="region-alert region1">
+    <div class="region-icon">🎯</div>
+    <h2>مرحباً!</h2>
+    <p>أنت الآن داخل<br><span class="region-name">المربع الأول</span></p>
+    <button class="close-btn" onclick="closeAlert('alert-region1')">حسناً</button>
+</div>
+
+<!-- Region 2 Alert -->
+<div id="alert-region2" class="region-alert region2">
+    <div class="region-icon">🎯</div>
+    <h2>مرحباً!</h2>
+    <p>أنت الآن داخل<br><span class="region-name">المربع الثاني</span></p>
+    <button class="close-btn" onclick="closeAlert('alert-region2')">حسناً</button>
+</div>
+
+<div id="map"></div>
+
+<script>
+    // ============================================
+    // ERROR LOGGING SYSTEM
+    // ============================================
+    const errorLog = [];
+    const MAX_LOG_ENTRIES = 50;
+
+    function addLogEntry(type, message, details = '') {
+        const timestamp = new Date().toLocaleTimeString('ar-SA');
+        const entry = {
+            type: type, // 'error', 'warn', 'info'
+            message: message,
+            details: details,
+            time: timestamp
+        };
+        errorLog.unshift(entry);
+        if (errorLog.length > MAX_LOG_ENTRIES) {
+            errorLog.pop();
+        }
+        updateLogDisplay();
+
+        // Show log button if there are errors
+        if (type === 'error') {
+            document.getElementById('btn-toggle-log').classList.add('visible');
+        }
+
+        // Also log to console
+        console.log(`[${type.toUpperCase()}] ${message}`, details);
+    }
+
+    function updateLogDisplay() {
+        const container = document.getElementById('error-log-content');
+        container.innerHTML = errorLog.map(entry => `
+            <div class="log-entry log-${entry.type}">
+                <span class="log-time">${entry.time}</span>
+                <strong>${entry.type.toUpperCase()}:</strong> ${entry.message}
+                ${entry.details ? `<br><small style="opacity:0.7">${entry.details}</small>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function toggleErrorLog() {
+        const log = document.getElementById('error-log');
+        log.classList.toggle('visible');
+    }
+
+    function clearLog() {
+        errorLog.length = 0;
+        updateLogDisplay();
+    }
+
+    // Global error handler
+    window.onerror = function(message, source, lineno, colno, error) {
+        addLogEntry('error', message, `Line ${lineno}, Col ${colno}`);
+        return false;
+    };
+
+    // Unhandled promise rejection handler
+    window.addEventListener('unhandledrejection', function(event) {
+        addLogEntry('error', 'Unhandled Promise Rejection', event.reason);
+    });
+
+    // ============================================
+    // MAP INITIALIZATION
+    // ============================================
+    addLogEntry('info', 'Initializing map...');
+
+    var map = L.map('map', {
+        zoomControl: false // We'll add it in a better position
+    }).setView([21.30121135, 39.783359450000006], 14);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Multiple tile layers for better reliability
+    const satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '© Esri Satellite',
+        maxZoom: 19
+    });
+
+    const streetTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19
+    });
+
+    satelliteTiles.addTo(map);
+
+    // Add layer control
+    L.control.layers({
+        "Satellite": satelliteTiles,
+        "Street": streetTiles
+    }).addTo(map);
+
+    // ============================================
+    // REGION DATA (Complete Coordinates)
+    // ============================================
+    addLogEntry('info', 'Loading region data...');
+
+    // Region 1 - المربع الأول (Complete coordinates)
+    var region1Coords = [
+        [21.4145955, 39.7486048], [21.4156007, 39.7473108], [21.4164061, 39.7461671], 
+        [21.4169883, 39.7452958], [21.4177002, 39.7444673], [21.4181726, 39.7437247], 
+        [21.418648, 39.7432792], [21.4194847, 39.7425574], [21.4204084, 39.7417001], 
+        [21.4217015, 39.7409179], [21.4236637, 39.7398781], [21.4251565, 39.73901], 
+        [21.4272413, 39.7371919], [21.4290663, 39.7355456], [21.4298917, 39.7347561], 
+        [21.4312972, 39.7333607], [21.4329423, 39.7320511], [21.4344615, 39.7309563], 
+        [21.4361803, 39.7301297], [21.4364852, 39.7298954], [21.4364208, 39.7295533], 
+        [21.4260972, 39.7191377], [21.4179904, 39.6956421], [21.3790397, 39.697727], 
+        [21.3890136, 39.7066551], [21.3922836, 39.7095776], [21.3958851, 39.7120617], 
+        [21.3993615, 39.7145938], [21.4009398, 39.7158537], [21.4018189, 39.7166262], 
+        [21.4028421, 39.717227], [21.4055448, 39.7191953], [21.4084815, 39.7214698], 
+        [21.4098199, 39.7232294], [21.4111848, 39.7249126], [21.4119104, 39.7279692], 
+        [21.4119231, 39.7356274], [21.4118288, 39.7370606], [21.4115292, 39.7398715], 
+        [21.4114226, 39.7422091], [21.4113893, 39.7435622], [21.4120179, 39.7474645], 
+        [21.4126478, 39.7507721], [21.4133574, 39.7500313], [21.4145955, 39.7486048]
+    ];
+
+    // Region 2 - المربع الثاني (Complete coordinates)
+    var region2Coords = [
+        [21.3485877, 39.7811709], [21.3519452, 39.7741328], [21.3773638, 39.764863], 
+        [21.4003805, 39.7607432], [21.4040564, 39.758061], [21.4078921, 39.755765], 
+        [21.4104304, 39.7531968], [21.4126478, 39.7507721], [21.4118687, 39.7466521], 
+        [21.4113893, 39.7435622], [21.4115292, 39.7398715], [21.4119231, 39.7356274], 
+        [21.4119104, 39.7279692], [21.4111848, 39.7249126], [21.4084815, 39.7214698], 
+        [21.4028421, 39.717227], [21.4018189, 39.7166262], [21.4009398, 39.7158537], 
+        [21.3993615, 39.7145938], [21.3922836, 39.7095776], [21.3790397, 39.697727], 
+        [21.34424, 39.7536995], [21.3432821, 39.7353317], [21.3445597, 39.7109558], 
+        [21.3420022, 39.6941327], [21.3384839, 39.6795417], [21.3327277, 39.6582557], 
+        [21.3365652, 39.6390296], [21.3301692, 39.6307899], [21.3239323, 39.6368848], 
+        [21.314497, 39.6414342], [21.3025027, 39.6441805], [21.2930671, 39.6513892], 
+        [21.2869913, 39.6666711], [21.2863317, 39.6709415], [21.2837526, 39.6752119], 
+        [21.2713953, 39.6961112], [21.2570755, 39.7165348], [21.2266757, 39.7442582], 
+        [21.2249961, 39.7553303], [21.2271558, 39.7708656], [21.2437964, 39.8093179], 
+        [21.2388365, 39.817043], [21.2325963, 39.8220211], [21.2256041, 39.8244015], 
+        [21.2195262, 39.8260975], [21.1914133, 39.8371241], [21.1795244, 39.8458998], 
+        [21.1716693, 39.8543489], [21.1685361, 39.8581197], [21.1666366, 39.8636954], 
+        [21.1659375, 39.8696572], [21.1690591, 39.8792699], [21.1815836, 39.891995], 
+        [21.1832231, 39.894936], [21.1872231, 39.9092075], [21.195464, 39.9135234], 
+        [21.21263, 39.9092133], [21.2176335, 39.9089369], [21.2257579, 39.9143218], 
+        [21.2284636, 39.9146192], [21.2395698, 39.9156889], [21.2461156, 39.9164154], 
+        [21.2528215, 39.9183436], [21.2570342, 39.9223534], [21.259967, 39.9254193], 
+        [21.2661523, 39.935929], [21.2890668, 39.9225284], [21.2884287, 39.914203], 
+        [21.2954156, 39.9092252], [21.2991489, 39.9039895], [21.303042, 39.8994402], 
+        [21.3006978, 39.8815056], [21.3121589, 39.8776597], [21.3142537, 39.8778033], 
+        [21.3145493, 39.8793846], [21.31634, 39.8769039], [21.3181024, 39.8764055], 
+        [21.3193883, 39.8755805], [21.3213605, 39.8741449], [21.3240856, 39.8740417], 
+        [21.3266574, 39.8735992], [21.3276693, 39.8752201], [21.3276418, 39.8799309], 
+        [21.3307325, 39.8794061], [21.3402966, 39.861685], [21.3535881, 39.8509606], 
+        [21.3522493, 39.8478063], [21.3512301, 39.8448236], [21.3503906, 39.8378714], 
+        [21.35135, 39.83417], [21.3524692, 39.8299107], [21.3545474, 39.8219069], 
+        [21.3518497, 39.8129589], [21.3494912, 39.8041185], [21.3466691, 39.7906122], 
+        [21.3485877, 39.7811709]
+    ];
+
+    // Create polygons with proper styling
+    var region1Polygon = L.polygon(region1Coords, {
+        color: '#ff5252', 
+        fillColor: '#ff5252', 
+        fillOpacity: 0.25, 
+        weight: 3, 
+        dashArray: '8, 8'
+    }).addTo(map).bindPopup("<b>المربع الأول</b><br>المنطقة الأولى");
+
+    var region2Polygon = L.polygon(region2Coords, {
+        color: '#0F9D58', 
+        fillColor: '#0F9D58', 
+        fillOpacity: 0.25, 
+        weight: 3, 
+        dashArray: '8, 8'
+    }).addTo(map).bindPopup("<b>المربع الثاني</b><br>المنطقة الثانية");
+
+    // Fit map to show all regions
+    var allRegions = L.featureGroup([region1Polygon, region2Polygon]);
+    map.fitBounds(allRegions.getBounds().pad(0.1));
+
+    addLogEntry('info', 'Regions loaded successfully', 'Region 1 and Region 2 polygons created');
+
+    // ============================================
+    // GPS MARKER AND TRACKING
+    // ============================================
+    var userMarker = L.circleMarker([0, 0], { 
+        radius: 12, 
+        color: 'white', 
+        fillColor: '#0078ff', 
+        fillOpacity: 1,
+        weight: 3
+    }).addTo(map);
+
+    var accuracyCircle = L.circle([0, 0], {
+        radius: 0,
+        color: '#0078ff',
+        fillColor: '#0078ff',
+        fillOpacity: 0.15,
+        weight: 1
+    }).addTo(map);
+
+    // State tracking variables
+    var wasInsideRegion1 = false;
+    var wasInsideRegion2 = false;
+    var alertShownRegion1 = false;
+    var alertShownRegion2 = false;
+    var watchId = null;
+    var lastPosition = null;
+    var positionHistory = [];
+    const MAX_HISTORY = 20;
+
+    // ============================================
+    // ENHANCED GPS LOCATION FUNCTIONS
+    // ============================================
+
+    /**
+     * Get location using multiple strategies for best accuracy
+     */
+    function getBestLocation() {
+        addLogEntry('info', 'Requesting location access...');
+
+        if (!navigator.geolocation) {
+            addLogEntry('error', 'Geolocation not supported', 'Browser does not support GPS');
+            updateStatus('error', 'المتصفح لا يدعم GPS');
+            return;
+        }
+
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+        };
+
+        // Try to get current position first
+        navigator.geolocation.getCurrentPosition(
+            onInitialPosition,
+            onInitialError,
+            options
+        );
+    }
+
+    function onInitialPosition(position) {
+        addLogEntry('info', 'Initial position acquired', `Accuracy: ${position.coords.accuracy}m`);
+        handlePositionUpdate(position);
+
+        // Start continuous watching
+        startWatching();
+    }
+
+    function onInitialError(error) {
+        addLogEntry('error', 'Initial position failed', getErrorMessage(error));
+
+        // Try with lower accuracy
+        addLogEntry('warn', 'Retrying with lower accuracy...');
+        navigator.geolocation.getCurrentPosition(
+            onInitialPosition,
+            onFinalError,
+            { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+        );
+    }
+
+    function onFinalError(error) {
+        addLogEntry('error', 'All location attempts failed', getErrorMessage(error));
+        updateStatus('error', 'فشل في الحصول على الموقع');
+        showLocationError(error);
+    }
+
+    function startWatching() {
+        if (watchId !== null) return;
+
+        addLogEntry('info', 'Starting continuous location watch...');
+
+        const watchOptions = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 5000
+        };
+
+        watchId = navigator.geolocation.watchPosition(
+            handlePositionUpdate,
+            handleWatchError,
+            watchOptions
+        );
+
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('gps-info').style.display = 'block';
+    }
+
+    function stopWatching() {
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            addLogEntry('info', 'Location watching stopped');
+        }
+    }
+
+    // ============================================
+    // POSITION HANDLING
+    // ============================================
+    function handlePositionUpdate(position) {
+        const coords = position.coords;
+        const latlng = [coords.latitude, coords.longitude];
+
+        // Update position history
+        positionHistory.push({
+            lat: coords.latitude,
+            lng: coords.longitude,
+            accuracy: coords.accuracy,
+            timestamp: position.timestamp
+        });
+        if (positionHistory.length > MAX_HISTORY) {
+            positionHistory.shift();
+        }
+
+        // Update markers
+        userMarker.setLatLng(latlng);
+
+        if (coords.accuracy) {
+            accuracyCircle.setLatLng(latlng);
+            accuracyCircle.setRadius(coords.accuracy);
+        }
+
+        // Center map on first fix or if accuracy improved significantly
+        if (!lastPosition || coords.accuracy < lastPosition.accuracy - 10) {
+            map.setView(latlng, Math.max(16, map.getZoom()));
+        }
+
+        lastPosition = {
+            lat: coords.latitude,
+            lng: coords.longitude,
+            accuracy: coords.accuracy
+        };
+
+        // Update UI
+        updateGPSInfo(position);
+        updateStatus('active', 'متصل');
+        checkZone(latlng, coords.accuracy);
+    }
+
+    function handleWatchError(error) {
+        addLogEntry('warn', 'Watch position error', getErrorMessage(error));
+
+        // Don't stop watching on temporary errors
+        if (error.code === error.TIMEOUT) {
+            addLogEntry('warn', 'Location timeout - will retry');
+            updateStatus('warning', 'جاري إعادة المحاولة...');
+        } else {
+            updateStatus('error', 'خطأ في GPS');
+        }
+    }
+
+    // ============================================
+    // UI UPDATES
+    // ============================================
+    function updateGPSInfo(position) {
+        const coords = position.coords;
+        const timestamp = new Date(position.timestamp).toLocaleTimeString('ar-SA');
+
+        document.getElementById('lat').textContent = coords.latitude.toFixed(7);
+        document.getElementById('lng').textContent = coords.longitude.toFixed(7);
+        document.getElementById('alt').textContent = coords.altitude ? coords.altitude.toFixed(1) + 'm' : 'N/A';
+        document.getElementById('speed').textContent = coords.speed ? (coords.speed * 3.6).toFixed(1) + ' km/h' : 'N/A';
+        document.getElementById('heading').textContent = coords.heading ? coords.heading.toFixed(0) + '°' : 'N/A';
+        document.getElementById('timestamp').textContent = timestamp;
+
+        // Update accuracy badge
+        const accuracyEl = document.getElementById('accuracy');
+        if (coords.accuracy) {
+            let badgeClass = 'accuracy-low';
+            let badgeText = `±${Math.round(coords.accuracy)}m`;
+
+            if (coords.accuracy <= 10) {
+                badgeClass = 'accuracy-high';
+            } else if (coords.accuracy <= 50) {
+                badgeClass = 'accuracy-medium';
+            }
+
+            accuracyEl.innerHTML = `<span class="accuracy-badge ${badgeClass}">${badgeText}</span>`;
+        } else {
+            accuracyEl.textContent = '---';
+        }
+    }
+
+    function updateStatus(state, message) {
+        const statusEl = document.getElementById('status');
+        const spinner = '<span class="spinner"></span>';
+
+        switch(state) {
+            case 'active':
+                statusEl.innerHTML = `<span style="color:#00ff88;">🟢</span> ${message}`;
+                break;
+            case 'searching':
+                statusEl.innerHTML = `${spinner} <span style="color:#ffa502;">${message}</span>`;
+                break;
+            case 'warning':
+                statusEl.innerHTML = `<span style="color:#ffa502;">⚠️</span> ${message}`;
+                break;
+            case 'error':
+                statusEl.innerHTML = `<span style="color:#ff4757;">🔴</span> ${message}`;
+                break;
+            default:
+                statusEl.textContent = message;
+        }
+    }
+
+    // ============================================
+    // ZONE DETECTION
+    // ============================================
+    function checkZone(latlng, accuracy) {
+        // Use point-in-polygon for more accurate detection than bounds check
+        const isInsideRegion1 = isPointInPolygon(latlng, region1Coords);
+        const isInsideRegion2 = isPointInPolygon(latlng, region2Coords);
+
+        const zoneEl = document.getElementById('zone-check');
+
+        if (isInsideRegion1) {
+            zoneEl.innerHTML = "<span class='inside'>✅ داخل المربع الأول</span>";
+
+            if (!wasInsideRegion1 && !alertShownRegion1) {
+                showAlert('region1', 'المربع الأول');
+                alertShownRegion1 = true;
+                addLogEntry('info', 'Entered Region 1');
+            }
+            wasInsideRegion1 = true;
+            wasInsideRegion2 = false;
+            alertShownRegion2 = false;
+
+        } else if (isInsideRegion2) {
+            zoneEl.innerHTML = "<span class='inside' style='color:#0F9D58;'>✅ داخل المربع الثاني</span>";
+
+            if (!wasInsideRegion2 && !alertShownRegion2) {
+                showAlert('region2', 'المربع الثاني');
+                alertShownRegion2 = true;
+                addLogEntry('info', 'Entered Region 2');
+            }
+            wasInsideRegion2 = true;
+            wasInsideRegion1 = false;
+            alertShownRegion1 = false;
+
+        } else {
+            zoneEl.innerHTML = "<span class='outside'>❌ خارج المناطق</span>";
+
+            if (wasInsideRegion1 || wasInsideRegion2) {
+                addLogEntry('info', 'Left region', `Was in R1:${wasInsideRegion1} R2:${wasInsideRegion2}`);
+            }
+
+            wasInsideRegion1 = false;
+            wasInsideRegion2 = false;
+            alertShownRegion1 = false;
+            alertShownRegion2 = false;
+        }
+    }
+
+    /**
+     * Ray-casting algorithm for point-in-polygon detection
+     * More accurate than Leaflet's bounds.contains()
+     */
+    function isPointInPolygon(point, polygon) {
+        const x = point[0];
+        const y = point[1];
+        let inside = false;
+
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            const xi = polygon[i][0], yi = polygon[i][1];
+            const xj = polygon[j][0], yj = polygon[j][1];
+
+            const intersect = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+            if (intersect) inside = !inside;
+        }
+
+        return inside;
+    }
+
+    // ============================================
+    // ALERTS AND NOTIFICATIONS
+    // ============================================
+    function showAlert(regionId, regionName) {
+        document.getElementById('backdrop').style.display = 'block';
+        document.getElementById(`alert-${regionId}`).style.display = 'block';
+
+        // Vibrate pattern: 3 pulses
+        if (navigator.vibrate) {
+            navigator.vibrate([500, 200, 500, 200, 500]);
+            addLogEntry('info', 'Vibration triggered');
+        }
+
+        // Play entry sound
+        playEntrySound(regionId === 'region1' ? 800 : 600);
+    }
+
+    function closeAlert(alertId) {
+        document.getElementById('backdrop').style.display = 'none';
+        document.getElementById(alertId).style.display = 'none';
+        if (alertId === 'alert-region1') alertShownRegion1 = false;
+        if (alertId === 'alert-region2') alertShownRegion2 = false;
+    }
+
+    function playEntrySound(frequency) {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) {
+                addLogEntry('warn', 'Web Audio API not supported');
+                return;
+            }
+
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.frequency.value = frequency || 800;
+            osc.type = 'sine';
+
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.5);
+
+            addLogEntry('info', 'Entry sound played', `Frequency: ${frequency}Hz`);
+        } catch(e) {
+            addLogEntry('error', 'Failed to play sound', e.message);
+        }
+    }
+
+    // ============================================
+    // ERROR HANDLING
+    // ============================================
+    function getErrorMessage(error) {
+        const messages = {
+            1: 'Permission denied - User blocked location access',
+            2: 'Position unavailable - GPS signal weak or disabled',
+            3: 'Timeout - Location request took too long'
+        };
+        return messages[error.code] || `Unknown error: ${error.message}`;
+    }
+
+    function showLocationError(error) {
+        let message = 'خطأ في تحديد الموقع';
+        let solution = '';
+
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                message = 'تم رفض إذن الوصول للموقع';
+                solution = 'يرجى السماح بالوصول للموقع في إعدادات المتصفح';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                message = 'الموقع غير متاح';
+                solution = 'تأكد من تفعيل GPS في جهازك';
+                break;
+            case error.TIMEOUT:
+                message = 'انتهت مهلة الطلب';
+                solution = 'حاول مرة أخرى في منطقة مفتوحة';
+                break;
+        }
+
+        addLogEntry('error', message, solution);
+        alert(`${message}\n${solution}`);
+    }
+
+    // ============================================
+    // EVENT LISTENERS
+    // ============================================
+    document.getElementById('btn-start').addEventListener('click', function() {
+        this.disabled = true;
+        updateStatus('searching', 'جاري البحث...');
+        getBestLocation();
+    });
+
+    document.getElementById('backdrop').addEventListener('click', function() {
+        closeAlert('alert-region1');
+        closeAlert('alert-region2');
+    });
+
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            addLogEntry('info', 'Page hidden - continuing tracking');
+        } else {
+            addLogEntry('info', 'Page visible');
+            // Request fresh location when returning to page
+            if (watchId !== null) {
+                navigator.geolocation.getCurrentPosition(handlePositionUpdate, null, {maximumAge: 0});
+            }
+        }
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', stopWatching);
+
+    addLogEntry('info', 'System initialized and ready');
+</script>
+</body>
+</html>

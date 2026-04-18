@@ -14,7 +14,7 @@
         #top-bar { position: fixed; top: 0; left: 0; right: 0; min-height: 80px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-bottom: 3px solid #00b894; z-index: 1000; display: flex; align-items: center; justify-content: space-between; padding: 10px 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); flex-wrap: wrap; gap: 10px; }
         .logo { display: flex; align-items: center; gap: 12px; color: #00b894; font-size: 18px; font-weight: bold; }
         
-        .info-section { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; justify-content: flex-end; flex: 1; }
+        .info-section { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; flex: 1; }
         .info-item { display: flex; align-items: center; gap: 8px; color: #fff; font-size: 13px; background: rgba(255,255,255,0.08); padding: 8px 15px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); }
         .info-item .val { font-weight: bold; color: #ffd700; }
         
@@ -23,8 +23,11 @@
         .dot-green { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         
-        #btn-start { background: linear-gradient(135deg, #00b894 0%, #00a085 100%); color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; white-space: nowrap; }
+        /* أزرار التحكم */
+        .btn { color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; white-space: nowrap; }
+        #btn-start { background: linear-gradient(135deg, #00b894 0%, #00a085 100%); }
         #btn-start:disabled { background: #555; cursor: not-allowed; }
+        #btn-save { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); display: none; }
         
         #map-container { position: fixed; top: 80px; left: 0; right: 0; bottom: 0; z-index: 1; }
         #map { height: 100% !important; width: 100% !important; background: #1a1a2e; }
@@ -45,7 +48,8 @@
         <div class="info-item"><span>🧭 الاتجاه:</span><span id="heading" class="val">---°</span></div>
         <div class="info-item"><span>🎯 المنطقة:</span><span id="zone-check" class="val" style="color: #fff;">---</span></div>
         <div class="info-item"><span id="gps-status">غير متصل</span><span class="status-dot dot-red" id="gps-dot"></span></div>
-        <button id="btn-start">تفعيل التتبع</button>
+        <button id="btn-start" class="btn">تفعيل التتبع</button>
+        <button id="btn-save" class="btn">💾 حفظ المسار (KML)</button>
     </div>
 </div>
 
@@ -59,7 +63,6 @@
 <div id="map-container"><div id="map"></div></div>
 
 <script>
-    // الإحداثيات المستخرجة من ملفات KML
     const zones = [
         { name: "الوردية الأولى", color: "#F57C00", coords: [[21.4205663,39.7784752],[21.4391024,39.775042],[21.4397415,39.7606225],[21.4359067,39.7571892],[21.4314325,39.7482628],[21.4298346,39.7444863],[21.4298346,39.7365899],[21.4288759,39.7247452],[21.4248809,39.7189087],[21.4218447,39.709124],[21.4180094,39.6969361],[21.4164113,39.6919579],[21.3799705,39.6969361],[21.3873233,39.7044892],[21.3932373,39.7092957],[21.4053841,39.7183938],[21.4112974,39.7240586],[21.4119366,39.7374482],[21.4114572,39.7444863],[21.4101787,39.7530694],[21.4135348,39.7544426],[21.4143338,39.7630257],[21.4146534,39.7678322],[21.416731,39.774012],[21.4205663,39.7784752]] },
         { name: "الوردية الثانية", color: "#FBC02D", coords: [[21.349931,39.8036451],[21.3467333,39.7954053],[21.349931,39.7802991],[21.3448147,39.7658796],[21.3422565,39.7445936],[21.3422565,39.730174],[21.3435356,39.7116346],[21.3416169,39.6985883],[21.3396982,39.687602],[21.3358608,39.6711225],[21.3320232,39.6628827],[21.3320232,39.654643],[21.3365003,39.6381635],[21.3320232,39.6292371],[21.3173116,39.6402234],[21.2981204,39.6484632],[21.2898034,39.6580762],[21.2866044,39.6697492],[21.2795664,39.6834821],[21.2578106,39.7171277],[21.2334914,39.7377271],[21.2232506,39.75146],[21.2290112,39.774806],[21.2405316,39.8002118],[21.2430916,39.8098249],[21.2430916,39.8228711],[21.2616501,39.8283643],[21.2782868,39.8256177],[21.3013191,39.8180646],[21.3262667,39.8105115],[21.349931,39.8036451]] },
@@ -70,20 +73,17 @@
     var map = L.map('map', { zoomControl: false, attributionControl: false }).setView([21.38, 39.75], 11);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
 
-    // إضافة المناطق للخريطة
     var allZonesLayer = L.featureGroup();
     zones.forEach(zone => {
         L.polygon(zone.coords, { color: zone.color, fillOpacity: 0.2, weight: 3 }).addTo(allZonesLayer).bindPopup(zone.name);
     });
     allZonesLayer.addTo(map);
 
-    // متغيرات التتبع
     let currentReportedZone = null;
     let wakeLock = null;
-    let pathCoordinates = [];
+    let pathCoordinates = []; // مصفوفة لتخزين إحداثيات المسار
     let pathPolyline = L.polyline([], { color: '#ff4757', weight: 4, opacity: 0.8 }).addTo(map);
 
-    // نظام إصدار صوت التنبيه
     function playBeep() {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -93,30 +93,26 @@
             osc.connect(ctx.destination);
             osc.start();
             osc.stop(ctx.currentTime + 0.3);
-        } catch(e) { console.log("الصوت غير مدعوم أو محظور"); }
+        } catch(e) {}
     }
 
-    // منع انطفاء الشاشة
     async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-            }
-        } catch (err) { console.log("Wake Lock API error"); }
+        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
     }
 
+    // برمجة زر تفعيل التتبع
     document.getElementById('btn-start').addEventListener('click', function() {
         if (!navigator.geolocation) return alert('GPS غير مدعوم');
         
         this.disabled = true;
         this.textContent = "جاري التتبع...";
-        requestWakeLock(); // طلب بقاء الشاشة مضاءة
+        document.getElementById('btn-save').style.display = 'inline-block'; // إظهار زر الحفظ
+        requestWakeLock();
 
         navigator.geolocation.watchPosition(function(pos) {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             
-            // حساب السرعة والاتجاه
             const speedKmH = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0;
             const headingDeg = pos.coords.heading ? pos.coords.heading.toFixed(0) : '---';
             
@@ -127,27 +123,67 @@
             
             map.setView([lat, lng], 15);
             
-            // رسم المسار (الخط الأحمر)
+            // تسجيل المسار
             pathCoordinates.push([lat, lng]);
             pathPolyline.setLatLngs(pathCoordinates);
             
-            // تحديث نقطة المستخدم
             if (window.userMarker) map.removeLayer(window.userMarker);
             window.userMarker = L.circleMarker([lat, lng], { radius: 8, color: 'white', fillColor: '#0078ff', fillOpacity: 1 }).addTo(map);
 
             checkLocation(lat, lng);
-        }, function(err) {
-            alert("حدث خطأ في تحديد الموقع: " + err.message);
-        }, { enableHighAccuracy: true, maximumAge: 0 });
+        }, null, { enableHighAccuracy: true, maximumAge: 0 });
+    });
+
+    // برمجة زر حفظ المسار كـ KML
+    document.getElementById('btn-save').addEventListener('click', function() {
+        if (pathCoordinates.length === 0) {
+            alert('لا يوجد مسار لحفظه حتى الآن. يرجى التحرك أولاً.');
+            return;
+        }
+
+        // تحويل النقاط لصيغة KML (Longitude, Latitude)
+        let coordsString = pathCoordinates.map(point => `${point[1]},${point[0]},0`).join(' ');
+
+        let kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>مسار التتبع</name>
+    <Placemark>
+      <name>المسار المسجل</name>
+      <Style>
+        <LineStyle>
+          <color>ff0000ff</color> <width>4</width>
+        </LineStyle>
+      </Style>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          ${coordsString}
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
+        // إنشاء ملف قابل للتحميل
+        let blob = new Blob([kmlContent], { type: "application/vnd.google-earth.kml+xml" });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        let dateStr = new Date().toISOString().slice(0,10);
+        
+        a.href = url;
+        a.download = `Track_${dateStr}.kml`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     });
 
     function isPointInPoly(lat, lng, poly) {
-        var x = lat, y = lng;
-        var inside = false;
+        var x = lat, y = lng, inside = false;
         for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
             var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
-            var intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-            if (intersect) inside = !inside;
+            if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
         }
         return inside;
     }
@@ -163,18 +199,17 @@
             statusLabel.textContent = activeZone.name;
             statusLabel.style.color = activeZone.color;
             
-            // تفعيل الصوت والتنبيه فقط إذا تغيرت المنطقة
             if (currentReportedZone !== activeZone.name) {
                 currentReportedZone = activeZone.name;
                 alertBox.style.background = `linear-gradient(135deg, ${activeZone.color} 0%, #333 100%)`;
                 alertBox.style.border = `2px solid ${activeZone.color}`;
-                playBeep(); // تشغيل الصوت
+                playBeep();
                 showAlert(activeZone.name);
             }
         } else {
             statusLabel.textContent = "خارج المناطق";
             statusLabel.style.color = "#fff";
-            currentReportedZone = null; // إعادة ضبط عند الخروج من كل المناطق
+            currentReportedZone = null;
         }
     }
 
